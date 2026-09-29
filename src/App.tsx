@@ -1,128 +1,122 @@
-import "./styles.css";
+import { useState } from "react";
+import { StoreProvider, useStore } from "./core/store";
+import { ToastHost, RoleTag } from "./components/ui";
+import WatchPage from "./components/WatchPage";
+import ReviewPage from "./components/ReviewPage";
+import HandoverPage from "./components/HandoverPage";
+import HistoryPage from "./components/HistoryPage";
+import AuditPage from "./components/AuditPage";
+import SettingsPage from "./components/SettingsPage";
+import { fmtDateTime } from "./core/time";
 
-const project = {
-  "sourceNo": 1,
-  "id": "hxyfront-62001",
-  "port": 62001,
-  "title": "船舶轮机值班记录",
-  "domain": "船舶轮机",
-  "prompt": "我想做一个面向船舶轮机值班的前端记录系统，轮机员可以记录主机转速、滑油压力、冷却水温、燃油消耗、舱底水状态和异常巡检项。页面需要有值班班次切换、机舱参数看板、异常记录时间线、交接班摘要和按设备筛选的历史记录。数据先保存在浏览器本地，后续方便扩展成船队统一管理。",
-  "palette": [
-    "#0f766e",
-    "#2563eb",
-    "#f97316"
-  ],
-  "metrics": [
-    "主机转速",
-    "滑油压力",
-    "冷却水温",
-    "燃油消耗"
-  ],
-  "filters": [
-    "主机",
-    "发电机",
-    "泵组",
-    "舱底水"
-  ],
-  "fields": [
-    "值班班次",
-    "设备名称",
-    "参数读数",
-    "异常描述",
-    "处理状态",
-    "交接备注"
-  ],
-  "records": [
-    [
-      "08-12班",
-      "主机",
-      "转速82rpm，滑油压力0.42MPa",
-      "正常巡检"
-    ],
-    [
-      "12-16班",
-      "发电机#2",
-      "冷却水温偏高",
-      "已安排复查"
-    ],
-    [
-      "16-20班",
-      "舱底水",
-      "液位接近警戒线",
-      "已记录交班"
-    ]
-  ]
-};
+type Tab = "bridge" | "engine" | "review" | "handover" | "history" | "audit" | "settings";
 
-function App() {
+const TABS: { key: Tab; label: string }[] = [
+  { key: "bridge", label: "驾驶台值班页" },
+  { key: "engine", label: "机舱值班页" },
+  { key: "review", label: "同步 / 待复核" },
+  { key: "handover", label: "交接班" },
+  { key: "history", label: "台账历史" },
+  { key: "audit", label: "审计记录" },
+  { key: "settings", label: "设置 / 迁移" },
+];
+
+function Shell() {
+  const { state, dispatch, now } = useStore();
+  const [tab, setTab] = useState<Tab>("engine");
+
+  const pendingCount = state.conflicts.filter((c) => c.status === "pending").length;
+  const unsynced = state.outbox.bridge.length + state.outbox.engine.length;
+  const migrating = state.migration.phase !== "done";
+
   return (
     <main className="app">
-      <section className="hero">
-        <p>{project.id} · 源提示词{project.sourceNo} · Port {project.port}</p>
-        <h1>{project.title}</h1>
-        <span>{project.prompt}</span>
-      </section>
-
-      <section className="metrics">
-        {project.metrics.map((metric: string, index: number) => (
-          <article key={metric}>
-            <small>{metric}</small>
-            <strong>{[86, 14, 7, 32][index] ?? 12}</strong>
-          </article>
-        ))}
-      </section>
-
-      <section className="workspace">
-        <aside className="panel">
-          <h2>{project.domain}筛选</h2>
-          <div className="chips">
-            {project.filters.map((item: string) => (
-              <button key={item}>{item}</button>
-            ))}
-          </div>
-        </aside>
-
-        <section className="panel form-panel">
-          <div className="heading">
-            <div>
-              <p>专业字段</p>
-              <h2>新增记录</h2>
-            </div>
-            <button className="primary">保存草稿</button>
-          </div>
-          <div className="field-grid">
-            {project.fields.map((field: string) => (
-              <label key={field}>
-                <span>{field}</span>
-                <input placeholder={"填写" + field} />
-              </label>
-            ))}
-          </div>
-        </section>
-      </section>
-
-      <section className="panel">
-        <div className="heading">
-          <div>
-            <p>历史记录</p>
-            <h2>近期工作台</h2>
-          </div>
-          <button>导出摘要</button>
+      <header className="topbar">
+        <div className="brand">
+          <h1>船舶双岗值班离线台账</h1>
+          <p>驾驶台 × 机舱 · 断网双记 · 同步合并 · 复核拦截交班</p>
         </div>
-        <div className="records">
-          {project.records.map((record: string[], index: number) => (
-            <article key={record.join("-")}>
-              <b>{String(index + 1).padStart(2, "0")}</b>
-              <div>
-                <h3>{record[0]}</h3>
-                <p>{record.slice(1).join(" · ")}</p>
-              </div>
-            </article>
-          ))}
+        <div className="topbar-right">
+          <div className="clock">
+            <span>船内时间</span>
+            <b>{fmtDateTime(now)}</b>
+          </div>
+          <button
+            className={`net-switch ${state.online ? "is-online" : "is-offline"}`}
+            onClick={() => dispatch({ type: "set-online", online: !state.online })}
+            title="点击模拟断网 / 恢复联网"
+          >
+            <i className={`net-light ${state.online ? "online" : "offline"}`} />
+            {state.online ? "链路在线" : "断网中"}
+          </button>
+          <div className="identity">
+            <RoleTag role={state.role} />
+            <span>{state.userName}</span>
+          </div>
         </div>
-      </section>
+      </header>
+
+      <nav className="tabs">
+        {TABS.map((t) => {
+          const badge =
+            t.key === "review"
+              ? pendingCount
+              : (t.key === "bridge" || t.key === "engine")
+                ? state.outbox[t.key].length
+                : t.key === "settings"
+                  ? migrating
+                    ? "…"
+                    : 0
+                  : 0;
+          return (
+            <button
+              key={t.key}
+              className={`tab ${tab === t.key ? "active" : ""}`}
+              onClick={() => setTab(t.key)}
+            >
+              {t.label}
+              {badge ? <span className="tab-badge">{badge}</span> : null}
+              {t.key === "review" && pendingCount > 0 && <i className="tab-dot" />}
+            </button>
+          );
+        })}
+      </nav>
+
+      {unsynced > 0 && (
+        <div className="unsynced-strip">
+          有 {unsynced} 条记录积压在岗位待发箱（断网双记中），恢复联网后按设备与记录时刻自动合并
+        </div>
+      )}
+
+      <div className="tab-body">
+        {tab === "bridge" && <WatchPage post="bridge" goPending={() => setTab("review")} />}
+        {tab === "engine" && <WatchPage post="engine" goPending={() => setTab("review")} />}
+        {tab === "review" && (
+          <ReviewPage
+            manualSync={() => {
+              dispatch({ type: "sync" });
+            }}
+          />
+        )}
+        {tab === "handover" && <HandoverPage goReview={() => setTab("review")} />}
+        {tab === "history" && <HistoryPage />}
+        {tab === "audit" && <AuditPage />}
+        {tab === "settings" && <SettingsPage />}
+      </div>
+
+      <footer className="footer">
+        hxyfront-62001 · 数据仅存于本浏览器（localStorage）· 审计事件只增且带哈希链 · 后续可扩展船队统一同步
+      </footer>
     </main>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <StoreProvider>
+      <ToastHost>
+        <Shell />
+      </ToastHost>
+    </StoreProvider>
+  );
+}
